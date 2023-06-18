@@ -204,58 +204,58 @@ static ngx_int_t ngx_http_init_sticky_peer(ngx_http_request_t *r, ngx_http_upstr
 	iphp->request = r;
 
 	/* check weather a cookie is present or not and save it */
-	if (ngx_http_parse_multi_header_lines(&r->headers_in.cookies, &iphp->sticky_conf->cookie_name, &route) != NGX_DECLINED) {
-		/* a route cookie has been found. Let's give it a try */
-		ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "[sticky/init_sticky_peer] got cookie route=%V, let's try to find a matching peer", &route);
+	if (ngx_http_parse_multi_header_lines(r, r->headers_in.cookie, &iphp->sticky_conf->cookie_name, &route) == NULL) {
+		/* nothing found */
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "[sticky/init_sticky_peer] route cookie not found", &route);
+		return NGX_OK; /* return OK, in order to continue */
+	}
 
-		/* hash, hmac or text, just compare digest */
-		if (iphp->sticky_conf->hash || iphp->sticky_conf->hmac || iphp->sticky_conf->text) {
+	/* a route cookie has been found. Let's give it a try */
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "[sticky/init_sticky_peer] got cookie route=%V, let's try to find a matching peer", &route);
 
-			/* check internal struct has been set */
-			if (!iphp->sticky_conf->peers) {
-				/* log a warning, as it will continue without the sticky */
-				ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "[sticky/init_sticky_peer] internal peers struct has not been set");
-				return NGX_OK; /* return OK, in order to continue */
+	/* hash, hmac or text, just compare digest */
+	if (iphp->sticky_conf->hash || iphp->sticky_conf->hmac || iphp->sticky_conf->text) {
+
+		/* check internal struct has been set */
+		if (!iphp->sticky_conf->peers) {
+			/* log a warning, as it will continue without the sticky */
+			ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "[sticky/init_sticky_peer] internal peers struct has not been set");
+			return NGX_OK; /* return OK, in order to continue */
+		}
+
+		/* search the digest found in the cookie in the peer digest list */
+		for (i = 0; i < iphp->rrp.peers->number; i++) {
+
+			/* ensure the both len are equal and > 0 */
+			if (iphp->sticky_conf->peers[i].digest.len != route.len || route.len <= 0) {
+				continue;
 			}
 
-			/* search the digest found in the cookie in the peer digest list */
-			for (i = 0; i < iphp->rrp.peers->number; i++) {
-
-				/* ensure the both len are equal and > 0 */
-				if (iphp->sticky_conf->peers[i].digest.len != route.len || route.len <= 0) {
-					continue;
-				}
-
-				if (!ngx_strncmp(iphp->sticky_conf->peers[i].digest.data, route.data, route.len)) {
-					/* we found a match */
-					iphp->selected_peer = i;
-					ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "[sticky/init_sticky_peer] the route \"%V\" matches peer at index %ui", &route, i);
-					return NGX_OK;
-				}
-			}
-
-		} else {
-
-			/* switch back to index, just convert to integer and ensure it corresponds to a valid peer */
-			n = ngx_atoi(route.data, route.len);
-			if (n == NGX_ERROR) {
-				ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "[sticky/init_sticky_peer] unable to convert the route \"%V\" to an integer value", &route);
-			} else if (n >= 0 && n < (ngx_int_t)iphp->rrp.peers->number) {
-				/* found one */
-				ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "[sticky/init_sticky_peer] the route \"%V\" matches peer at index %i", &route, n);
-				iphp->selected_peer = n;
+			if (!ngx_strncmp(iphp->sticky_conf->peers[i].digest.data, route.data, route.len)) {
+				/* we found a match */
+				iphp->selected_peer = i;
+				ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "[sticky/init_sticky_peer] the route \"%V\" matches peer at index %ui", &route, i);
 				return NGX_OK;
 			}
 		}
 
-		/* nothing was found, just continue with rr */
-		ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "[sticky/init_sticky_peer] the route \"%V\" does not match any peer. Just ignoring it ...", &route);
-		return NGX_OK;
+	} else {
+
+		/* switch back to index, just convert to integer and ensure it corresponds to a valid peer */
+		n = ngx_atoi(route.data, route.len);
+		if (n == NGX_ERROR) {
+			ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "[sticky/init_sticky_peer] unable to convert the route \"%V\" to an integer value", &route);
+		} else if (n >= 0 && n < (ngx_int_t)iphp->rrp.peers->number) {
+			/* found one */
+			ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "[sticky/init_sticky_peer] the route \"%V\" matches peer at index %i", &route, n);
+			iphp->selected_peer = n;
+			return NGX_OK;
+		}
 	}
 
-	/* nothing found */
-	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "[sticky/init_sticky_peer] route cookie not found", &route);
-	return NGX_OK; /* return OK, in order to continue */
+	/* nothing was found, just continue with rr */
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "[sticky/init_sticky_peer] the route \"%V\" does not match any peer. Just ignoring it ...", &route);
+	return NGX_OK;
 }
 
 /*

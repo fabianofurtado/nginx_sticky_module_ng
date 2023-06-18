@@ -9,6 +9,7 @@
 #include <ngx_http.h>
 #include <ngx_md5.h>
 #include <ngx_sha1.h>
+#include <openssl/md5.h>    /* avoid NGINX compilation error */
 
 #include "ngx_http_sticky_misc.h"
 
